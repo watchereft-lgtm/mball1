@@ -1,0 +1,20 @@
+# Локальные зависимости: качаются один раз через setup.ps1, в репозиторий не идут.
+# В облаке Streamlit ставит пакеты из requirements.txt.
+.pylibs/
+.wheels/
+.venv/
+venv/
+
+# Служебные файлы запуска и самопроверки.
+.port
+.ip
+server.log
+server.pid
+.testtmp/
+__pycache__/
+*.py[cod]
+
+# Системный мусор.
+.DS_Store
+Thumbs.db
+desktop.ini

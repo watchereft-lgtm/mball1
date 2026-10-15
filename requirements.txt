@@ -1,0 +1,5 @@
+# Зависимости приложения. Этот файл читает Streamlit Community Cloud при деплое.
+# Локально можно не использовать: setup.ps1 / setup.sh раскладывают то же самое в .pylibs.
+streamlit==1.65.0
+qrcode==8.2
+pillow==12.3.0
