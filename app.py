@@ -203,7 +203,11 @@ def inject_base_css() -> None:
         """
         <style>
           #MainMenu, header [data-testid="stStatusWidget"], footer {visibility: hidden;}
-          .block-container {padding-top: 1.2rem; padding-bottom: 1.2rem;}
+          /* Отступ сверху — под панель управления Streamlit Cloud (белая полоса
+             с GitHub и Fork). Она накладывается ПОВЕРХ приложения, и её высота
+             не входит ни в vh, ни в dvh, ни в svh — поэтому правки высоты не
+             помогали. Значение с запасом: если панели нет, останется больше воздуха. */
+          .block-container {padding-top: 4.5rem; padding-bottom: 1.2rem;}
           .mb-title {font-size: 2rem; font-weight: 700; text-align: center; margin: 0 0 1rem 0;}
           .mb-title small {display: block; font-size: 1rem; font-weight: 400; opacity: .6; margin-top: .4rem;}
           .mb-answer {
@@ -232,13 +236,16 @@ def inject_base_css() -> None:
           @media (max-width: 900px) and (hover: none), (max-width: 640px) {
             /* Только размеры. Высоту контейнеров не трогаем: попытка разрешить
                прокрутку изнутри приложения сделала хуже, потому что прокруткой
-               управляет обёртка снаружи.
-               Картинка ограничена через svh — это НАИМЕНЬШАЯ возможная высота
-               экрана на телефоне, поэтому витрина помещается целиком даже когда
-               адресная строка браузера развёрнута. Обычный vh здесь врёт: он
-               считается от максимальной высоты. */
-            .block-container {padding-top: 1.4rem !important;}
+               управляет обёртка снаружи. */
+            .block-container {
+              /* Панель Streamlit Cloud на телефоне плюс «челка» и адресная
+                 строка Safari — берём максимум и учитываем safe-area. */
+              padding-top: max(4.5rem, calc(3.5rem + env(safe-area-inset-top))) !important;
+            }
             .mb-title {font-size: 1.35rem; margin-bottom: .6rem;}
+            /* Картинка ограничена и по svh — это НАИМЕНЬШАЯ возможная высота
+               экрана на телефоне, поэтому витрина помещается целиком даже когда
+               адресная строка браузера развёрнута. */
             .mb-qr img {width: auto; max-width: min(72vw, 38svh, 38vh); border-width: 8px;}
             .mb-answer {font-size: 1.45rem; padding: .9rem .6rem;}
           }
@@ -425,83 +432,12 @@ def screen_game() -> None:
         )
 
 
-def render_html(markup: str, height: int | None = None) -> None:
-    """Вставляет HTML в саму страницу приложения, а не в отдельный компонент.
-
-    st.html (Streamlit 1.33+) рендерит разметку в основном документе, поэтому
-    стили и скрипты видят настоящую страницу. Если версия старая — откатываемся
-    на components.html, который рисует в изолированном iframe.
-    """
-    html_function = getattr(st, "html", None)
-    if html_function is not None and height is None:
-        html_function(markup)
-        return
-    import streamlit.components.v1 as components
-
-    components.html(markup, height=height or 300)
-
-
-def screen_diagnostics() -> None:
-    """Отладочный экран /?debug=1: линейка и измерения, без чужих документов.
-
-    Ничего не пытаемся достать из родительской страницы: браузер этого не даёт.
-    Вместо этого рисуем линейку прямо в документе приложения — по ней видно
-    глазами, сколько экрана видно, — и печатаем размеры окна.
-    """
-    ticks = "".join(
-        f'<div style="display:flex;align-items:center;gap:8px;height:50px;'
-        f'border-top:1px solid #bbb;font:14px monospace;">'
-        f'<span style="width:64px;text-align:right;">{value}</span>'
-        f'<span style="flex:1;height:8px;background:{"#6C4AB6" if value % 200 == 0 else "#ddd"};"></span>'
-        f"</div>"
-        for value in range(0, 1401, 50)
-    )
-    render_html(
-        '<div id="mb-ruler" style="font:16px/1.5 monospace;">'
-        '<div style="padding:8px 0;font-weight:700;">Линейка: числа — пиксели от верха страницы.</div>'
-        f"{ticks}"
-        '<div style="padding:10px 0;font-weight:700;">'
-        "Найдите самое верхнее видимое число: это и есть обрезанная часть."
-        "</div>"
-        "</div>"
-        '<div id="mb-measure" style="font:18px/1.6 monospace;background:#111;color:#0f0;'
-        'padding:12px;border-radius:8px;margin-top:12px;">Измеряю…</div>'
-        "<script>"
-        "(function(){"
-        "  function draw(){"
-        "    var p = window.parent;"
-        "    var lines = [];"
-        "    function push(n, v){ lines.push(n + ': ' + v); }"
-        "    push('ширина окна', window.innerWidth);"
-        "    push('высота окна', window.innerHeight);"
-        "    try { push('высота окна снаружи', p.innerHeight); }"
-        "    catch (e) { push('высота окна снаружи', 'недоступно'); }"
-        "    if (window.visualViewport) {"
-        "      push('видимая высота', Math.round(window.visualViewport.height));"
-        "      push('сдвиг видимой области', Math.round(window.visualViewport.offsetTop));"
-        "    }"
-        "    push('высота страницы', document.documentElement.scrollHeight);"
-        "    push('прокрутка', Math.round(window.scrollY));"
-        "    push('поддержка svh', CSS.supports('height', '100svh') ? 'да' : 'нет');"
-        "    document.getElementById('mb-measure').textContent = lines.join('\\n');"
-        "  }"
-        "  draw(); setTimeout(draw, 900); window.addEventListener('resize', draw);"
-        "})();"
-        "</script>"
-    )
-
-
 def main() -> None:
     inject_base_css()
     screen = st.query_params.get("screen", "")
     if isinstance(screen, list):
         screen = screen[0] if screen else ""
-    debug = st.query_params.get("debug", "")
-    if isinstance(debug, list):
-        debug = debug[0] if debug else ""
-    if debug:
-        screen_diagnostics()
-    elif screen == "game":
+    if screen == "game":
         screen_game()
     else:
         screen_showcase()
