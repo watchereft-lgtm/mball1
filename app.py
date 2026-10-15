@@ -203,8 +203,8 @@ def inject_base_css() -> None:
         """
         <style>
           #MainMenu, header [data-testid="stStatusWidget"], footer {visibility: hidden;}
-          .block-container {padding-top: 1.6rem; padding-bottom: 1.5rem;}
-          .mb-title {font-size: 2rem; font-weight: 700; text-align: center; margin: 0 0 1.2rem 0;}
+          .block-container {padding-top: 1.2rem; padding-bottom: 1.2rem;}
+          .mb-title {font-size: 2rem; font-weight: 700; text-align: center; margin: 0 0 1rem 0;}
           .mb-title small {display: block; font-size: 1rem; font-weight: 400; opacity: .6; margin-top: .4rem;}
           .mb-answer {
             font-size: 1.9rem; font-weight: 700; line-height: 1.25;
@@ -212,10 +212,33 @@ def inject_base_css() -> None:
             border: 2px solid currentColor; border-radius: 1rem;
           }
           .mb-hint {text-align: center; opacity: .65; font-size: .95rem; margin-top: .6rem;}
-          .mb-qr {display: flex; justify-content: center; margin: 0;}
+          /* Витрина: QR не должен упираться в край и обрезаться.
+             Раньше ширина считалась через 70vh, а во вложенном контейнере облака
+             vh считается от окна целиком — картинка вылезала за экран. */
+          .mb-qr {display: flex; justify-content: center; align-items: center; margin: 0;}
           .mb-qr img {
-            width: min(78vw, 70vh); max-width: 100%; height: auto;
-            image-rendering: pixelated; border: 14px solid #fff; border-radius: 6px;
+            display: block;
+            width: 100%;
+            max-width: 520px;
+            height: auto;
+            image-rendering: pixelated;
+            border: 12px solid #fff;
+            border-radius: 6px;
+            box-sizing: content-box;
+          }
+          @media (max-width: 640px) {
+            /* Телефон: браузер режет верх страницы, если контейнер выше видимой
+               области, а прокрутка при этом заблокирована. Убираем жёсткую высоту
+               и разрешаем странице скроллиться. */
+            html, body {height: auto !important; min-height: 100dvh; overflow-y: auto !important;}
+            [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+              height: auto !important;
+              min-height: 100dvh;
+              overflow-y: auto !important;
+            }
+            .block-container {padding-top: 2.4rem !important; padding-bottom: 2rem;}
+            .mb-title {font-size: 1.5rem;}
+            .mb-qr img {max-width: 82vw; border-width: 8px;}
           }
         </style>
         """,
