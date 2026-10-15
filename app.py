@@ -226,14 +226,21 @@ def inject_base_css() -> None:
             border-radius: 6px;
             box-sizing: content-box;
           }
-          @media (max-width: 640px) {
+          /* Телефоны и планшеты: сенсорный ввод без наведения мышью.
+             Проверяем именно это, а не ширину окна: телефон в альбомной
+             ориентации шире 640px и под простое правило «до 640px» не попадал. */
+          @media (max-width: 900px) and (hover: none), (max-width: 640px) {
             /* Только размеры. Высоту контейнеров не трогаем: попытка разрешить
-               прокрутку изнутри приложения в облаке сделала хуже, потому что
-               прокруткой управляет обёртка снаружи. */
-            .block-container {padding-top: 2rem !important;}
-            .mb-title {font-size: 1.45rem; margin-bottom: .8rem;}
-            .mb-qr img {max-width: 74vw; border-width: 8px;}
-            .mb-answer {font-size: 1.5rem; padding: 1rem .7rem;}
+               прокрутку изнутри приложения сделала хуже, потому что прокруткой
+               управляет обёртка снаружи.
+               Картинка ограничена через svh — это НАИМЕНЬШАЯ возможная высота
+               экрана на телефоне, поэтому витрина помещается целиком даже когда
+               адресная строка браузера развёрнута. Обычный vh здесь врёт: он
+               считается от максимальной высоты. */
+            .block-container {padding-top: 1.4rem !important;}
+            .mb-title {font-size: 1.35rem; margin-bottom: .6rem;}
+            .mb-qr img {width: auto; max-width: min(72vw, 38svh, 38vh); border-width: 8px;}
+            .mb-answer {font-size: 1.45rem; padding: .9rem .6rem;}
           }
         </style>
         """,
@@ -418,72 +425,69 @@ def screen_game() -> None:
         )
 
 
-def screen_diagnostics() -> None:
-    """Отладочный экран: показывает, что именно обрезает верх на телефоне.
+def render_html(markup: str, height: int | None = None) -> None:
+    """Вставляет HTML в саму страницу приложения, а не в отдельный компонент.
 
-    Открывается как /?debug=1. Меряет окно, контейнеры Streamlit и положение
-    заголовка, чтобы не гадать о причине обрезки.
+    st.html (Streamlit 1.33+) рендерит разметку в основном документе, поэтому
+    стили и скрипты видят настоящую страницу. Если версия старая — откатываемся
+    на components.html, который рисует в изолированном iframe.
     """
+    html_function = getattr(st, "html", None)
+    if html_function is not None and height is None:
+        html_function(markup)
+        return
     import streamlit.components.v1 as components
 
-    components.html(
-        """
-        <div id="report" style="font: 14px/1.5 monospace; white-space: pre-wrap;
-             background:#111; color:#0f0; padding:12px; border-radius:8px;">
-Измеряю…
-        </div>
-        <script>
-        function line(name, value) { return name.padEnd(34, ' ') + value; }
-        function measure() {
-            const out = [];
-            out.push(line('окно (innerWidth x innerHeight)', window.innerWidth + ' x ' + window.innerHeight));
-            out.push(line('visualViewport', window.visualViewport
-                ? Math.round(window.visualViewport.width) + ' x ' + Math.round(window.visualViewport.height)
-                  + ', offsetTop=' + Math.round(window.visualViewport.offsetTop)
-                  + ', scale=' + window.visualViewport.scale.toFixed(2)
-                : 'нет'));
-            out.push(line('documentElement.clientHeight', document.documentElement.clientHeight));
-            out.push(line('document scrollHeight', document.documentElement.scrollHeight));
-            out.push(line('body scrollHeight', document.body.scrollHeight));
-            out.push(line('window.scrollY', Math.round(window.scrollY)));
+    components.html(markup, height=height or 300)
 
-            const targets = [
-                ['body', document.body],
-                ['stApp', document.querySelector('[data-testid="stApp"]')],
-                ['stAppViewContainer', document.querySelector('[data-testid="stAppViewContainer"]')],
-                ['stMain', document.querySelector('[data-testid="stMain"]')],
-                ['stHeader', document.querySelector('[data-testid="stHeader"]')],
-                ['block-container', document.querySelector('.block-container') || document.querySelector('[data-testid="stMainBlockContainer"]')],
-                ['mb-title', document.querySelector('.mb-title')],
-                ['mb-qr', document.querySelector('.mb-qr')],
-            ];
-            out.push('');
-            out.push('ЭЛЕМЕНТ              top    height  scrollH clientH overflowY');
-            for (const [name, el] of targets) {
-                if (!el) { out.push(line(name, 'нет элемента')); continue; }
-                const rect = el.getBoundingClientRect();
-                const style = window.getComputedStyle(el);
-                out.push(
-                    name.padEnd(20, ' ') +
-                    String(Math.round(rect.top)).padStart(6) +
-                    String(Math.round(rect.height)).padStart(8) +
-                    String(el.scrollHeight).padStart(9) +
-                    String(el.clientHeight).padStart(9) +
-                    '  ' + style.overflowY
-                );
-            }
-            out.push('');
-            out.push('ПОДСКАЗКА: если top у mb-title отрицательный — верх уехал за экран.');
-            out.push('Если у stMain clientHeight меньше scrollHeight и overflowY=hidden —');
-            out.push('прокрутка заблокирована именно этим контейнером.');
-            document.getElementById('report').textContent = out.join('\\n');
-        }
-        measure();
-        setTimeout(measure, 800);
-        window.addEventListener('resize', measure);
-        </script>
-        """,
-        height=460,
+
+def screen_diagnostics() -> None:
+    """Отладочный экран /?debug=1: линейка и измерения, без чужих документов.
+
+    Ничего не пытаемся достать из родительской страницы: браузер этого не даёт.
+    Вместо этого рисуем линейку прямо в документе приложения — по ней видно
+    глазами, сколько экрана видно, — и печатаем размеры окна.
+    """
+    ticks = "".join(
+        f'<div style="display:flex;align-items:center;gap:8px;height:50px;'
+        f'border-top:1px solid #bbb;font:14px monospace;">'
+        f'<span style="width:64px;text-align:right;">{value}</span>'
+        f'<span style="flex:1;height:8px;background:{"#6C4AB6" if value % 200 == 0 else "#ddd"};"></span>'
+        f"</div>"
+        for value in range(0, 1401, 50)
+    )
+    render_html(
+        '<div id="mb-ruler" style="font:16px/1.5 monospace;">'
+        '<div style="padding:8px 0;font-weight:700;">Линейка: числа — пиксели от верха страницы.</div>'
+        f"{ticks}"
+        '<div style="padding:10px 0;font-weight:700;">'
+        "Найдите самое верхнее видимое число: это и есть обрезанная часть."
+        "</div>"
+        "</div>"
+        '<div id="mb-measure" style="font:18px/1.6 monospace;background:#111;color:#0f0;'
+        'padding:12px;border-radius:8px;margin-top:12px;">Измеряю…</div>'
+        "<script>"
+        "(function(){"
+        "  function draw(){"
+        "    var p = window.parent;"
+        "    var lines = [];"
+        "    function push(n, v){ lines.push(n + ': ' + v); }"
+        "    push('ширина окна', window.innerWidth);"
+        "    push('высота окна', window.innerHeight);"
+        "    try { push('высота окна снаружи', p.innerHeight); }"
+        "    catch (e) { push('высота окна снаружи', 'недоступно'); }"
+        "    if (window.visualViewport) {"
+        "      push('видимая высота', Math.round(window.visualViewport.height));"
+        "      push('сдвиг видимой области', Math.round(window.visualViewport.offsetTop));"
+        "    }"
+        "    push('высота страницы', document.documentElement.scrollHeight);"
+        "    push('прокрутка', Math.round(window.scrollY));"
+        "    push('поддержка svh', CSS.supports('height', '100svh') ? 'да' : 'нет');"
+        "    document.getElementById('mb-measure').textContent = lines.join('\\n');"
+        "  }"
+        "  draw(); setTimeout(draw, 900); window.addEventListener('resize', draw);"
+        "})();"
+        "</script>"
     )
 
 
