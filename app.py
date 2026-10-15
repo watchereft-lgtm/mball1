@@ -227,18 +227,13 @@ def inject_base_css() -> None:
             box-sizing: content-box;
           }
           @media (max-width: 640px) {
-            /* Телефон: браузер режет верх страницы, если контейнер выше видимой
-               области, а прокрутка при этом заблокирована. Убираем жёсткую высоту
-               и разрешаем странице скроллиться. */
-            html, body {height: auto !important; min-height: 100dvh; overflow-y: auto !important;}
-            [data-testid="stAppViewContainer"], [data-testid="stMain"] {
-              height: auto !important;
-              min-height: 100dvh;
-              overflow-y: auto !important;
-            }
-            .block-container {padding-top: 2.4rem !important; padding-bottom: 2rem;}
-            .mb-title {font-size: 1.5rem;}
-            .mb-qr img {max-width: 82vw; border-width: 8px;}
+            /* Только размеры. Высоту контейнеров не трогаем: попытка разрешить
+               прокрутку изнутри приложения в облаке сделала хуже, потому что
+               прокруткой управляет обёртка снаружи. */
+            .block-container {padding-top: 2rem !important;}
+            .mb-title {font-size: 1.45rem; margin-bottom: .8rem;}
+            .mb-qr img {max-width: 74vw; border-width: 8px;}
+            .mb-answer {font-size: 1.5rem; padding: 1rem .7rem;}
           }
         </style>
         """,
@@ -423,12 +418,86 @@ def screen_game() -> None:
         )
 
 
+def screen_diagnostics() -> None:
+    """Отладочный экран: показывает, что именно обрезает верх на телефоне.
+
+    Открывается как /?debug=1. Меряет окно, контейнеры Streamlit и положение
+    заголовка, чтобы не гадать о причине обрезки.
+    """
+    import streamlit.components.v1 as components
+
+    components.html(
+        """
+        <div id="report" style="font: 14px/1.5 monospace; white-space: pre-wrap;
+             background:#111; color:#0f0; padding:12px; border-radius:8px;">
+Измеряю…
+        </div>
+        <script>
+        function line(name, value) { return name.padEnd(34, ' ') + value; }
+        function measure() {
+            const out = [];
+            out.push(line('окно (innerWidth x innerHeight)', window.innerWidth + ' x ' + window.innerHeight));
+            out.push(line('visualViewport', window.visualViewport
+                ? Math.round(window.visualViewport.width) + ' x ' + Math.round(window.visualViewport.height)
+                  + ', offsetTop=' + Math.round(window.visualViewport.offsetTop)
+                  + ', scale=' + window.visualViewport.scale.toFixed(2)
+                : 'нет'));
+            out.push(line('documentElement.clientHeight', document.documentElement.clientHeight));
+            out.push(line('document scrollHeight', document.documentElement.scrollHeight));
+            out.push(line('body scrollHeight', document.body.scrollHeight));
+            out.push(line('window.scrollY', Math.round(window.scrollY)));
+
+            const targets = [
+                ['body', document.body],
+                ['stApp', document.querySelector('[data-testid="stApp"]')],
+                ['stAppViewContainer', document.querySelector('[data-testid="stAppViewContainer"]')],
+                ['stMain', document.querySelector('[data-testid="stMain"]')],
+                ['stHeader', document.querySelector('[data-testid="stHeader"]')],
+                ['block-container', document.querySelector('.block-container') || document.querySelector('[data-testid="stMainBlockContainer"]')],
+                ['mb-title', document.querySelector('.mb-title')],
+                ['mb-qr', document.querySelector('.mb-qr')],
+            ];
+            out.push('');
+            out.push('ЭЛЕМЕНТ              top    height  scrollH clientH overflowY');
+            for (const [name, el] of targets) {
+                if (!el) { out.push(line(name, 'нет элемента')); continue; }
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                out.push(
+                    name.padEnd(20, ' ') +
+                    String(Math.round(rect.top)).padStart(6) +
+                    String(Math.round(rect.height)).padStart(8) +
+                    String(el.scrollHeight).padStart(9) +
+                    String(el.clientHeight).padStart(9) +
+                    '  ' + style.overflowY
+                );
+            }
+            out.push('');
+            out.push('ПОДСКАЗКА: если top у mb-title отрицательный — верх уехал за экран.');
+            out.push('Если у stMain clientHeight меньше scrollHeight и overflowY=hidden —');
+            out.push('прокрутка заблокирована именно этим контейнером.');
+            document.getElementById('report').textContent = out.join('\\n');
+        }
+        measure();
+        setTimeout(measure, 800);
+        window.addEventListener('resize', measure);
+        </script>
+        """,
+        height=460,
+    )
+
+
 def main() -> None:
     inject_base_css()
     screen = st.query_params.get("screen", "")
     if isinstance(screen, list):
         screen = screen[0] if screen else ""
-    if screen == "game":
+    debug = st.query_params.get("debug", "")
+    if isinstance(debug, list):
+        debug = debug[0] if debug else ""
+    if debug:
+        screen_diagnostics()
+    elif screen == "game":
         screen_game()
     else:
         screen_showcase()
